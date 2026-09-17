@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/*
+ * Semantic color tokens. Components only use these (bg-canvas, text-fg, ...),
+ * so switching between day and night is a single media query below and native
+ * controls / scrollbars follow the OS thanks to `color-scheme`.
+ *
+ * The palette is a warm off-white / near-black neutral scale with one vivid
+ * blue accent (the same blue the camera marker uses on the plan).
+ */
+:root {
+  color-scheme: light;
+
+  --canvas: #f5f4f0;
+  --surface: #ffffff;
+  --surface-muted: #f3f2ee;
+  --surface-raised: #fbfaf8;
+  --line: #e8e6e0;
+  --line-strong: #d6d3cb;
+  --fg: #15141a;
+  --fg-muted: #6b6a72;
+  --fg-faint: #9c9aa3;
+  --accent: #2f5bff;
+  --accent-strong: #1f45e6;
+  --accent-soft: rgba(47, 91, 255, 0.1);
+  --accent-glow: rgba(47, 91, 255, 0.28);
+  --accent-fg: #ffffff;
+  --success: #16803c;
+  --success-soft: rgba(22, 128, 60, 0.12);
+  --danger: #c0272d;
+  --danger-soft: rgba(192, 39, 45, 0.1);
+  --warning: #a35f07;
+  --warning-soft: rgba(163, 95, 7, 0.12);
+  --stage: #101014;
+
+  --elev-card: 0 1px 2px rgba(20, 18, 30, 0.04), 0 8px 24px -12px rgba(20, 18, 30, 0.12);
+  --elev-pop: 0 1px 2px rgba(20, 18, 30, 0.06), 0 12px 32px -12px rgba(20, 18, 30, 0.22);
+  --elev-accent: 0 1px 2px rgba(31, 69, 230, 0.2), 0 8px 20px -8px var(--accent-glow);
+  --elev-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --canvas: #0c0c0f;
+    --surface: #15151a;
+    --surface-muted: #1c1c22;
+    --surface-raised: #1f1f26;
+    --line: #26262e;
+    --line-strong: #383842;
+    --fg: #f3f2f6;
+    --fg-muted: #9c9ba7;
+    --fg-faint: #6b6a77;
+    --accent: #5b7cff;
+    --accent-strong: #3f63ff;
+    --accent-soft: rgba(91, 124, 255, 0.16);
+    --accent-glow: rgba(91, 124, 255, 0.35);
+    --accent-fg: #ffffff;
+    --success: #4ade80;
+    --success-soft: rgba(74, 222, 128, 0.14);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.14);
+    --warning: #fbbf24;
+    --warning-soft: rgba(251, 191, 36, 0.14);
+    --stage: #08080a;
+
+    --elev-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    --elev-pop: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+    --elev-accent: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 8px 20px -8px var(--accent-glow);
+    --elev-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-glow: var(--accent-glow);
+  --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-stage: var(--stage);
+
+  --shadow-card: var(--elev-card);
+  --shadow-pop: var(--elev-pop);
+  --shadow-accent: var(--elev-accent);
+  --shadow-inset: var(--elev-inset);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-rise: rise 0.45s var(--ease-out-soft) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-spin-slow: spin 1.2s linear infinite;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+body {
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Soft accent bloom behind the page. It sits in the background layer, so the
+ * cards on top stay crisp and the effect only shows through the page gutters.
+ */
+.canvas-bloom {
+  background-image:
+    radial-gradient(60rem 28rem at 12% -10%, var(--accent-soft), transparent 60%),
+    radial-gradient(40rem 22rem at 100% 0%, var(--accent-soft), transparent 55%);
+}
+
+/* Fine dot grid used inside the empty stage states, mimicking drafting paper. */
+.dot-grid {
+  background-image: radial-gradient(circle at 1px 1px, var(--line-strong) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+/* Blurry shimmer placeholder for "waiting on the model" states. */
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--fg) 6%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-shimmer,
+  .animate-spin-slow {
+    animation: none;
+  }
+}
