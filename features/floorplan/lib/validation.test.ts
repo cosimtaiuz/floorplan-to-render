@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_IMAGE_DATA_URL_LENGTH,
   MAX_PROMPT_LENGTH,
+  capOnScale,
   decodeImageDataUrl,
   isFiniteNumber,
   isImageDataUrl,
   parseCamera,
+  parseOutputSize,
+  parseReasoningEffort,
+  parseRenderQuality,
 } from "./validation";
+import { REASONING_EFFORTS, RENDER_QUALITIES } from "@/features/floorplan/types";
 
 describe("isFiniteNumber", () => {
   it("accepts ordinary numbers, including zero and negatives", () => {
@@ -84,6 +89,97 @@ describe("parseCamera", () => {
     expect(parseCamera({ x: 0.5, angleDeg: 0 })).toBeNull();
     expect(parseCamera({ x: NaN, y: 0.5, angleDeg: 0 })).toBeNull();
     expect(parseCamera("nope")).toBeNull();
+  });
+});
+
+describe("parseReasoningEffort", () => {
+  it("keeps every value of the scale", () => {
+    for (const effort of REASONING_EFFORTS) {
+      expect(parseReasoningEffort(effort)).toBe(effort);
+    }
+  });
+
+  it("treats anything off the scale as not asked for", () => {
+    // These set the price of a model call, so an unknown value must never reach
+    // the SDK: the route falls back to its own default instead.
+    expect(parseReasoningEffort("extreme")).toBeUndefined();
+    expect(parseReasoningEffort("MAX")).toBeUndefined();
+    expect(parseReasoningEffort("")).toBeUndefined();
+    expect(parseReasoningEffort(undefined)).toBeUndefined();
+    expect(parseReasoningEffort(null)).toBeUndefined();
+    expect(parseReasoningEffort(3)).toBeUndefined();
+    expect(parseReasoningEffort({ effort: "max" })).toBeUndefined();
+  });
+});
+
+describe("parseRenderQuality", () => {
+  it("keeps every value of the scale", () => {
+    for (const quality of RENDER_QUALITIES) {
+      expect(parseRenderQuality(quality)).toBe(quality);
+    }
+  });
+
+  it("treats anything off the scale as not asked for", () => {
+    expect(parseRenderQuality("ultra")).toBeUndefined();
+    // Valid for the image API, but not on the scale this app allows.
+    expect(parseRenderQuality("auto")).toBeUndefined();
+    expect(parseRenderQuality(null)).toBeUndefined();
+    expect(parseRenderQuality(1)).toBeUndefined();
+  });
+});
+
+describe("parseOutputSize", () => {
+  it("returns undefined when no size is asked for, which means 'match the 3D view'", () => {
+    expect(parseOutputSize(undefined)).toBeUndefined();
+    expect(parseOutputSize(null)).toBeUndefined();
+  });
+
+  it("keeps a well-formed size", () => {
+    expect(parseOutputSize({ width: 1536, height: 1024 })).toEqual({ width: 1536, height: 1024 });
+  });
+
+  it("rejects sizes that could not produce an image", () => {
+    expect(parseOutputSize({ width: 0, height: 1024 })).toBeNull();
+    expect(parseOutputSize({ width: -1536, height: 1024 })).toBeNull();
+    expect(parseOutputSize({ width: NaN, height: 1024 })).toBeNull();
+    expect(parseOutputSize({ width: Infinity, height: 1024 })).toBeNull();
+  });
+
+  it("rejects malformed sizes rather than coercing them", () => {
+    expect(parseOutputSize({ width: "1536", height: 1024 })).toBeNull();
+    expect(parseOutputSize({ width: 1536 })).toBeNull();
+    expect(parseOutputSize("1536x1024")).toBeNull();
+  });
+});
+
+describe("capOnScale", () => {
+  const scale = ["low", "medium", "high"] as const;
+
+  it("gives the client what it asked for when nothing caps it", () => {
+    expect(capOnScale(scale, "high", "medium", undefined)).toBe("high");
+    expect(capOnScale(scale, "low", "medium", undefined)).toBe("low");
+  });
+
+  it("falls back to the default when the client asked for nothing", () => {
+    expect(capOnScale(scale, undefined, "medium", undefined)).toBe("medium");
+  });
+
+  it("clamps a request down to the ceiling the deployment set", () => {
+    expect(capOnScale(scale, "high", "medium", "low")).toBe("low");
+    expect(capOnScale(scale, "high", "medium", "high")).toBe("high");
+  });
+
+  it("leaves a request below the ceiling alone", () => {
+    expect(capOnScale(scale, "low", "medium", "high")).toBe("low");
+  });
+
+  it("caps the default itself, so a low ceiling is never exceeded", () => {
+    expect(capOnScale(scale, undefined, "medium", "low")).toBe("low");
+  });
+
+  it("treats an unusable ceiling as the default, so a typo cannot widen spending", () => {
+    expect(capOnScale(scale, "high", "medium", "hgih")).toBe("medium");
+    expect(capOnScale(scale, "high", "medium", "")).toBe("medium");
   });
 });
 

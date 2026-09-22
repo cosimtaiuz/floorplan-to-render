@@ -3,7 +3,9 @@
 import { memo, useCallback, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useFloorplanStore } from "@/features/floorplan/store/floorplanStore";
+import { REASONING_EFFORTS, type ReasoningEffort } from "@/features/floorplan/types";
 import { ElapsedTimer } from "./ElapsedTimer";
+import { ParamSelect, type ParamOption } from "./ParamSelect";
 import { StepHeading } from "./StepHeading";
 import { Spinner } from "./Spinner";
 import {
@@ -14,6 +16,20 @@ import {
   INSET,
   PANEL_TEXT,
 } from "./ui";
+
+/** Plain-language names for a scale whose raw values say nothing about the trade. */
+const EFFORT_LABELS: Record<ReasoningEffort, string> = {
+  low: "Low — quickest draft",
+  medium: "Medium — balanced",
+  high: "High — more careful",
+  xhigh: "Extra high — slower",
+  max: "Max — slowest, most thorough",
+};
+
+const EFFORT_OPTIONS: readonly ParamOption<ReasoningEffort>[] = REASONING_EFFORTS.map((value) => ({
+  value,
+  label: EFFORT_LABELS[value],
+}));
 
 /** Left panel of step 3: trigger the Three.js generation and read the outcome. */
 function SceneStepPanelComponent() {
@@ -30,6 +46,8 @@ function SceneStepPanelComponent() {
       })),
     );
   const generate = useFloorplanStore((s) => s.generate);
+  const reasoningEffort = useFloorplanStore((s) => s.reasoningEffort);
+  const setReasoningEffort = useFloorplanStore((s) => s.setReasoningEffort);
   const [showCode, setShowCode] = useState(false);
 
   const onGenerate = useCallback(() => {
@@ -50,6 +68,17 @@ function SceneStepPanelComponent() {
           : " Without a camera the view starts at eye height in the largest room."}{" "}
         Walk around, fly above the plan or jump between rooms with the buttons over the view.
       </StepHeading>
+
+      <div className="flex max-w-80">
+        <ParamSelect
+          label="Reasoning effort"
+          hint="Higher effort reads the plan more carefully, but the call is slower and costs more. The server may cap it lower."
+          value={reasoningEffort}
+          options={EFFORT_OPTIONS}
+          disabled={isLoading}
+          onChange={setReasoningEffort}
+        />
+      </div>
 
       <button
         type="button"
