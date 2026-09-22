@@ -32,6 +32,12 @@ const FIELD_BASE =
 
 export const TEXTAREA = `${FIELD_BASE} resize-y p-3 leading-relaxed`;
 export const INPUT = `${FIELD_BASE} h-11 px-3`;
+/**
+ * Native `<select>`, stripped of the platform chrome so it matches the other
+ * fields. The caret is drawn by `ParamSelect`, which is why there is room on the
+ * right for it.
+ */
+export const SELECT = `${FIELD_BASE} h-10 cursor-pointer appearance-none pr-9 pl-3 disabled:cursor-not-allowed disabled:opacity-50`;
 
 /** Small uppercase label above a title ("Step 2 of 4", "Render"). */
 export const EYEBROW = "text-md font-semibold uppercase tracking-[0.14em] text-fg-faint";

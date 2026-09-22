@@ -1,28 +1,30 @@
 import OpenAI from "openai";
-import type { ReasoningEffort } from "openai/resources/shared";
 import type { ResponseInputContent } from "openai/resources/responses/responses";
 import { describeOpenAIError } from "@/features/floorplan/server/openaiError";
 import { DEVELOPER_INSTRUCTIONS, buildUserMessage } from "@/features/floorplan/server/scenePrompt";
-import type {
-  GenerateRequest,
-  GenerateResponse,
-  GenerateSuccess,
-  RoomSpot,
-  ScenePose,
+import {
+  DEFAULT_REASONING_EFFORT,
+  REASONING_EFFORTS,
+  type GenerateRequest,
+  type GenerateResponse,
+  type GenerateSuccess,
+  type ReasoningEffort,
+  type RoomSpot,
+  type ScenePose,
 } from "@/features/floorplan/types";
 import {
   MAX_IMAGE_DATA_URL_LENGTH,
+  capOnScale,
   isFiniteNumber,
   isImageDataUrl,
   parseCamera,
+  parseReasoningEffort,
 } from "@/features/floorplan/lib/validation";
 
 // Reasoning models can take a while on complex scenes; give the platform room.
 export const maxDuration = 300;
 
 const MODEL = "gpt-6-astra";
-const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
-const ALLOWED_EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 const POSE_PROPERTIES = {
   x: { type: "number", description: "World X in meters (image left-to-right)." },
@@ -85,7 +87,7 @@ function parseRequest(body: unknown): ParsedRequest {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "Request body must be a JSON object." };
   }
-  const { imageDataUrl, camera } = body as Record<string, unknown>;
+  const { imageDataUrl, camera, reasoningEffort } = body as Record<string, unknown>;
 
   if (!isImageDataUrl(imageDataUrl)) {
     return { ok: false, error: "`imageDataUrl` must be an image data URL." };
@@ -99,20 +101,32 @@ function parseRequest(body: unknown): ParsedRequest {
     return { ok: false, error: "`camera` must contain numeric x, y (0..1) and angleDeg." };
   }
 
+  // An unusable effort is not worth failing a slow, expensive request over: the
+  // server settles on its own default instead.
+  const parsedEffort = parseReasoningEffort(reasoningEffort);
+
   return {
     ok: true,
     value: {
       imageDataUrl,
       ...(parsedCamera ? { camera: parsedCamera } : {}),
+      ...(parsedEffort ? { reasoningEffort: parsedEffort } : {}),
     },
   };
 }
 
-function resolveReasoningEffort(): ReasoningEffort {
-  const fromEnv = process.env.FLOORPLAN_REASONING_EFFORT;
-  return fromEnv && ALLOWED_EFFORTS.has(fromEnv)
-    ? (fromEnv as ReasoningEffort)
-    : DEFAULT_REASONING_EFFORT;
+/**
+ * The client picks the effort; FLOORPLAN_REASONING_EFFORT is the ceiling the
+ * deployment allows, not the setting, so whoever owns the API key keeps a lid on
+ * what a single request can cost.
+ */
+function resolveReasoningEffort(requested: ReasoningEffort | undefined): ReasoningEffort {
+  return capOnScale(
+    REASONING_EFFORTS,
+    requested,
+    DEFAULT_REASONING_EFFORT,
+    process.env.FLOORPLAN_REASONING_EFFORT,
+  );
 }
 
 function parsePose(value: unknown): ScenePose | null {
@@ -175,7 +189,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const parsed = parseRequest(rawBody);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
-  const { imageDataUrl, camera } = parsed.value;
+  const { imageDataUrl, camera, reasoningEffort } = parsed.value;
 
   const content: ResponseInputContent[] = [
     { type: "input_text", text: buildUserMessage({ camera }) },
@@ -187,7 +201,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const response = await openai.responses.create({
       model: MODEL,
-      reasoning: { effort: resolveReasoningEffort() },
+      reasoning: { effort: resolveReasoningEffort(reasoningEffort) },
       instructions: DEVELOPER_INSTRUCTIONS,
       input: [{ role: "user", content }],
       text: {

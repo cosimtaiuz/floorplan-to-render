@@ -63,14 +63,23 @@ CI runs format:check, lint, typecheck, test and build on every pull request.
 
 All values live in `.env.local`, which is git-ignored. See `.env.example`.
 
-| Variable                     | Required | Default  | Purpose                                         |
-| ---------------------------- | -------- | -------- | ----------------------------------------------- |
-| `OPENAI_API_KEY`             | yes      | —        | Both floorplan routes                           |
-| `FLOORPLAN_REASONING_EFFORT` | no       | `medium` | `low`…`max`; trades speed for scene quality     |
-| `FLOORPLAN_RENDER_QUALITY`   | no       | `medium` | `low` \| `medium` \| `high` for the render step |
+| Variable                     | Required | Default    | Purpose                                                     |
+| ---------------------------- | -------- | ---------- | ----------------------------------------------------------- |
+| `OPENAI_API_KEY`             | yes      | —          | Both floorplan routes                                       |
+| `FLOORPLAN_REASONING_EFFORT` | no       | no ceiling | Highest effort a request may ask for (`low`…`max`)          |
+| `FLOORPLAN_RENDER_QUALITY`   | no       | no ceiling | Highest render quality a request may ask for (`low`…`high`) |
 
 The key is read at request time, not at build time, so `pnpm build` and the
 whole test suite work without it.
+
+**The two scale variables are ceilings, not settings.** Reasoning effort and
+render quality are chosen in the UI, per generation (they default to `medium`
+there), because comparing `low` against `high` on the same plan is the point of
+the tool and a restart in between loses the scene you were looking at. Setting
+one of these variables caps what the browser can ask for: a request above the
+ceiling is clamped down to it rather than refused, so the app keeps working.
+Leave them unset and the whole scale is available; a value the app does not
+recognise caps at `medium`, so a typo cannot widen what a visitor may spend.
 
 ## Costs and abuse
 
@@ -84,6 +93,14 @@ internet. `POST /api/floorplan/generate` and `POST /api/floorplan/render` each
 cost real money per call, and both are slow enough (`maxDuration = 300`) to tie
 up a function while they run. They cap request size — 6 MB images, 4000-character
 prompts — but nothing stops one visitor calling them in a loop.
+
+The parameters that set the price of a call (reasoning effort, render quality,
+output size) come from the browser, so they are treated as untrusted input:
+effort and quality are checked against fixed scales and clamped to the ceilings
+above, and a requested size goes through the same constraints as the automatic
+one (`features/floorplan/lib/outputSize.ts`), which also keeps it inside the
+pixel budget. That bounds what a single call costs; it does not bound how many
+calls anyone makes.
 
 **If you put this on a public URL, put authentication, a rate limiter or a
 private network in front of it first.**
@@ -140,7 +157,9 @@ between steps.
    shaded cone is the camera's 90° horizontal field of view, which is exactly
    what the 3D camera uses. Optional: without a camera the model stands in the
    middle of the largest room.
-3. **3D scene** — hit **Generate 3D scene**. The model reproduces the geometry
+3. **3D scene** — pick a **reasoning effort** and hit **Generate 3D scene**.
+   Effort is how hard the model thinks about the plan: start at `low` while you
+   are framing, re-run at `high` once you know what you want. The model reproduces the geometry
    of the _whole_ plan (every room, wall, ceiling, door and window, with frames
    and skirting) and furnishes each room with recognizable standard furniture
    and fixtures (legs, cushions, handles, taps, lamps…) in flat colors; no
@@ -148,10 +167,12 @@ between steps.
    view starts where you put the camera, at eye height.
 4. **Render** — walk to the framing you want and hit **Continue to render**: the
    3D view is frozen as a screenshot at that moment and the render step shows
-   only the render itself. Describe materials, style and mood, and hit
-   **Generate render**; a second, separate stopwatch times the image
-   generation. **Back** brings you to the 3D view exactly where you were
-   standing, so you can reframe and render again.
+   only the render itself. Describe materials, style and mood, pick a **quality**
+   and a **size**, and hit **Generate render**; a second, separate stopwatch
+   times the image generation. Size defaults to matching the 3D view, so the
+   render keeps the framing you left it on; the explicit sizes are there when
+   you need a square or a portrait. **Back** brings you to the 3D view exactly
+   where you were standing, so you can reframe and render again.
 
 ### Moving around
 
@@ -203,8 +224,9 @@ never returned in a response body — see
   `RenderResult` (right-hand stage), `SceneOverlay` = `SceneControls` (d-pad,
   Walk/Fly, top view, reset) + `RoomSwitcher` (room buttons) drawn over the 3D
   view, `ElapsedTimer` (stopwatch), `StepHeading` ("Step n of 4" title block),
-  `StagePlaceholder` (empty / loading states of the dark stage), `Spinner`, and
-  `ui.ts` (shared class strings built on the tokens in `app/globals.css`).
+  `StagePlaceholder` (empty / loading states of the dark stage), `Spinner`,
+  `ParamSelect` (the model parameters picked before a call), and `ui.ts` (shared
+  class strings built on the tokens in `app/globals.css`).
 - `store/` — the Zustand store (`useFloorplanStore`) with all state and actions,
   including the current step, the rooms and the two timings.
 - `lib/` — iframe scene harness, iframe commands, screenshot capture, image
@@ -250,8 +272,10 @@ since placing it), with a prompt
 camera, architecture and furniture layout exactly as-is, but to treat the boxy
 mock-up furniture as placeholders (bounding volumes) and replace them with
 real-looking products rather than reproducing their cubic shapes. The output
-resolution follows the screenshot's aspect ratio, subject to the image model's
-constraints (`features/floorplan/lib/outputSize.ts`).
+resolution follows the screenshot's aspect ratio unless an explicit size was
+picked, and either way goes through the image model's constraints — edges
+divisible by 16, aspect within 3:1, inside the pixel budget
+(`features/floorplan/lib/outputSize.ts`).
 
 ## Deploying
 

@@ -1,16 +1,21 @@
 import { create } from "zustand";
 import { readAndDownscaleImage } from "@/features/floorplan/lib/imageUtils";
-import type {
-  CameraMarker,
-  FlowStep,
-  GenerateRequest,
-  GenerateResponse,
-  RenderRequest,
-  RenderResponse,
-  RoomSpot,
-  ScenePose,
-  SceneScreenshot,
-  Timing,
+import {
+  DEFAULT_REASONING_EFFORT,
+  DEFAULT_RENDER_QUALITY,
+  type CameraMarker,
+  type FlowStep,
+  type GenerateRequest,
+  type GenerateResponse,
+  type OutputSize,
+  type ReasoningEffort,
+  type RenderQuality,
+  type RenderRequest,
+  type RenderResponse,
+  type RoomSpot,
+  type ScenePose,
+  type SceneScreenshot,
+  type Timing,
 } from "@/features/floorplan/types";
 
 export type GenerationStatus = "idle" | "loading" | "success" | "error";
@@ -28,6 +33,13 @@ export type FloorplanState = {
   imageError: string | null;
 
   camera: CameraMarker | null;
+
+  /**
+   * How hard the model thinks about the scene. Chosen here rather than on the
+   * server so `low` can frame the plan and `high` can finish it, without a restart.
+   * The server caps it at what the deployment allows.
+   */
+  reasoningEffort: ReasoningEffort;
 
   /** 3D scene step (the reasoning model writes Three.js code). */
   status: GenerationStatus;
@@ -57,6 +69,10 @@ export type FloorplanState = {
 
   /** Render step (the image model turns a preview screenshot into a photo). */
   prompt: string;
+  /** Output quality of the image model, capped server-side like the effort above. */
+  renderQuality: RenderQuality;
+  /** Explicit output size, or null to keep the aspect of the 3D view (the default). */
+  renderSize: OutputSize | null;
   renderStatus: GenerationStatus;
   renderTiming: Timing;
   renderImageDataUrl: string | null;
@@ -69,6 +85,9 @@ export type FloorplanState = {
   setCamera: (camera: CameraMarker) => void;
   clearCamera: () => void;
   setPrompt: (prompt: string) => void;
+  setReasoningEffort: (effort: ReasoningEffort) => void;
+  setRenderQuality: (quality: RenderQuality) => void;
+  setRenderSize: (size: OutputSize | null) => void;
   setRuntimeError: (message: string | null) => void;
   setSceneReady: (ready: boolean) => void;
   setSceneCapture: (capture: SceneCapture | null) => void;
@@ -128,6 +147,17 @@ const initialState = {
   ...initialRenderState,
 };
 
+/**
+ * Model settings are preferences rather than work in progress: someone who
+ * turned the effort down to frame a plan quickly wants it down for the next
+ * plan too, so `reset` keeps them.
+ */
+const initialSettings = {
+  reasoningEffort: DEFAULT_REASONING_EFFORT,
+  renderQuality: DEFAULT_RENDER_QUALITY,
+  renderSize: null as OutputSize | null,
+};
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { error?: unknown };
@@ -140,6 +170,7 @@ async function readError(response: Response): Promise<string> {
 
 export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
   ...initialState,
+  ...initialSettings,
 
   setStep: (step) => {
     const state = get();
@@ -203,6 +234,12 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
 
   setPrompt: (prompt) => set({ prompt }),
 
+  setReasoningEffort: (reasoningEffort) => set({ reasoningEffort }),
+
+  setRenderQuality: (renderQuality) => set({ renderQuality }),
+
+  setRenderSize: (renderSize) => set({ renderSize }),
+
   setRuntimeError: (message) => set({ runtimeError: message }),
 
   setSceneReady: (ready) => {
@@ -214,7 +251,7 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
   setLastView: (pose) => set({ lastView: pose }),
 
   generate: async () => {
-    const { status, imageDataUrl, camera } = get();
+    const { status, imageDataUrl, camera, reasoningEffort } = get();
     if (status === "loading") return;
     if (!imageDataUrl) {
       set({ status: "error", errorMessage: "Upload a floorplan first." });
@@ -232,7 +269,11 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
       ...initialRenderState,
     });
 
-    const body: GenerateRequest = { imageDataUrl, ...(camera ? { camera } : {}) };
+    const body: GenerateRequest = {
+      imageDataUrl,
+      ...(camera ? { camera } : {}),
+      reasoningEffort,
+    };
     const finish = () => ({ startedAt, durationMs: Date.now() - startedAt });
 
     try {
@@ -274,7 +315,8 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
   },
 
   generateRender: async () => {
-    const { renderStatus, prompt, imageDataUrl, sceneScreenshot } = get();
+    const { renderStatus, prompt, imageDataUrl, sceneScreenshot, renderQuality, renderSize } =
+      get();
     if (renderStatus === "loading") return;
     if (!sceneScreenshot) {
       set({
@@ -302,6 +344,9 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
         screenshotWidth: sceneScreenshot.width,
         screenshotHeight: sceneScreenshot.height,
         ...(imageDataUrl ? { floorplanDataUrl: imageDataUrl } : {}),
+        quality: renderQuality,
+        // No size means "keep the aspect of the 3D view", which is the default.
+        ...(renderSize ? { size: renderSize } : {}),
       };
 
       const response = await fetch("/api/floorplan/render", {
@@ -337,5 +382,6 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
     }
   },
 
+  // Settings survive: they are how the user works, not what they produced.
   reset: () => set({ ...initialState, sceneCapture: get().sceneCapture }),
 }));

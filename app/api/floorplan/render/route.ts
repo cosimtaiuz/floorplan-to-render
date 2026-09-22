@@ -3,22 +3,28 @@ import type { Uploadable } from "openai";
 import { resolveOutputSize } from "@/features/floorplan/lib/outputSize";
 import { describeOpenAIError } from "@/features/floorplan/server/openaiError";
 import { buildRenderPrompt } from "@/features/floorplan/server/renderPrompt";
-import type { RenderRequest, RenderResponse } from "@/features/floorplan/types";
+import {
+  DEFAULT_RENDER_QUALITY,
+  RENDER_QUALITIES,
+  type RenderQuality,
+  type RenderRequest,
+  type RenderResponse,
+} from "@/features/floorplan/types";
 import {
   MAX_IMAGE_DATA_URL_LENGTH,
   MAX_PROMPT_LENGTH,
+  capOnScale,
   decodeImageDataUrl,
   isFiniteNumber,
   isImageDataUrl,
+  parseOutputSize,
+  parseRenderQuality,
 } from "@/features/floorplan/lib/validation";
 
 // Image generation can take up to ~2 minutes on complex prompts.
 export const maxDuration = 300;
 
 const MODEL = "gpt-image-2.5-sunburst";
-type RenderQuality = "low" | "medium" | "high";
-const DEFAULT_QUALITY: RenderQuality = "medium";
-const ALLOWED_QUALITIES: ReadonlySet<string> = new Set<RenderQuality>(["low", "medium", "high"]);
 
 function json(body: RenderResponse, status = 200): Response {
   return Response.json(body, { status });
@@ -30,8 +36,15 @@ function parseRequest(body: unknown): ParsedRequest {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "Request body must be a JSON object." };
   }
-  const { prompt, screenshotDataUrl, screenshotWidth, screenshotHeight, floorplanDataUrl } =
-    body as Record<string, unknown>;
+  const {
+    prompt,
+    screenshotDataUrl,
+    screenshotWidth,
+    screenshotHeight,
+    floorplanDataUrl,
+    quality,
+    size,
+  } = body as Record<string, unknown>;
 
   if (typeof prompt !== "string") return { ok: false, error: "`prompt` must be a string." };
   if (prompt.length > MAX_PROMPT_LENGTH) {
@@ -68,6 +81,15 @@ function parseRequest(body: unknown): ParsedRequest {
     }
   }
 
+  const parsedSize = parseOutputSize(size);
+  if (parsedSize === null) {
+    return { ok: false, error: "`size` must contain positive numeric width and height." };
+  }
+
+  // An unusable quality is not worth failing the request over: the server
+  // settles on its own default instead.
+  const parsedQuality = parseRenderQuality(quality);
+
   return {
     ok: true,
     value: {
@@ -76,13 +98,24 @@ function parseRequest(body: unknown): ParsedRequest {
       screenshotWidth,
       screenshotHeight,
       ...(floorplanDataUrl ? { floorplanDataUrl } : {}),
+      ...(parsedQuality ? { quality: parsedQuality } : {}),
+      ...(parsedSize ? { size: parsedSize } : {}),
     },
   };
 }
 
-function resolveQuality(): RenderQuality {
-  const fromEnv = process.env.FLOORPLAN_RENDER_QUALITY;
-  return fromEnv && ALLOWED_QUALITIES.has(fromEnv) ? (fromEnv as RenderQuality) : DEFAULT_QUALITY;
+/**
+ * The client picks the quality; FLOORPLAN_RENDER_QUALITY is the ceiling the
+ * deployment allows, not the setting, so whoever owns the API key keeps a lid on
+ * what a single request can cost.
+ */
+function resolveQuality(requested: RenderQuality | undefined): RenderQuality {
+  return capOnScale(
+    RENDER_QUALITIES,
+    requested,
+    DEFAULT_RENDER_QUALITY,
+    process.env.FLOORPLAN_RENDER_QUALITY,
+  );
 }
 
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -118,8 +151,15 @@ export async function POST(request: Request): Promise<Response> {
 
   const parsed = parseRequest(rawBody);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
-  const { prompt, screenshotDataUrl, screenshotWidth, screenshotHeight, floorplanDataUrl } =
-    parsed.value;
+  const {
+    prompt,
+    screenshotDataUrl,
+    screenshotWidth,
+    screenshotHeight,
+    floorplanDataUrl,
+    quality,
+    size,
+  } = parsed.value;
 
   const screenshot = await dataUrlToUploadable(screenshotDataUrl, "scene-screenshot");
   if (!screenshot) {
@@ -143,8 +183,8 @@ export async function POST(request: Request): Promise<Response> {
       model: MODEL,
       image: images,
       prompt: buildRenderPrompt({ prompt, hasFloorplan: Boolean(floorplanDataUrl) }),
-      size: resolveOutputSize(screenshotWidth, screenshotHeight),
-      quality: resolveQuality(),
+      size: resolveOutputSize(screenshotWidth, screenshotHeight, size),
+      quality: resolveQuality(quality),
       output_format: "jpeg",
       output_compression: 85,
     });

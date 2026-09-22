@@ -11,12 +11,34 @@ export type CameraMarker = {
 };
 
 /**
+ * Reasoning effort of the scene model, cheapest first. The order is the scale:
+ * the server clamps a request to the ceiling the deployment allows, so entries
+ * must stay sorted from least to most expensive.
+ */
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
+
+/** Output quality of the image model, cheapest first (same scale contract as above). */
+export const RENDER_QUALITIES = ["low", "medium", "high"] as const;
+export type RenderQuality = (typeof RENDER_QUALITIES)[number];
+export const DEFAULT_RENDER_QUALITY: RenderQuality = "medium";
+
+/** Explicit render resolution in pixels, before the API's own constraints are applied. */
+export type OutputSize = {
+  width: number;
+  height: number;
+};
+
+/**
  * Input of the 3D scene step. The description is intentionally absent: the
  * scene only has to reproduce the plan's geometry, style comes in at render time.
  */
 export type GenerateRequest = {
   imageDataUrl: string;
   camera?: CameraMarker;
+  /** Chosen in the UI. Absent (or above the server's ceiling) falls back on the server. */
+  reasoningEffort?: ReasoningEffort;
 };
 
 /**
@@ -68,6 +90,10 @@ export type RenderRequest = {
    * walked anywhere since placing it, the screenshot is the only truth about the view).
    */
   floorplanDataUrl?: string;
+  /** Chosen in the UI. Absent (or above the server's ceiling) falls back on the server. */
+  quality?: RenderQuality;
+  /** Explicit output size. Absent means "match the framing of the 3D view". */
+  size?: OutputSize;
 };
 
 export type RenderSuccess = {

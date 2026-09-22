@@ -4,7 +4,9 @@ import { memo, useCallback } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useFloorplanStore } from "@/features/floorplan/store/floorplanStore";
+import { RENDER_QUALITIES, type OutputSize, type RenderQuality } from "@/features/floorplan/types";
 import { ElapsedTimer } from "./ElapsedTimer";
+import { ParamSelect, type ParamOption } from "./ParamSelect";
 import { Spinner } from "./Spinner";
 import { StepHeading } from "./StepHeading";
 import { ALERT_ERROR, BUTTON_PRIMARY_STEP, BUTTON_SMALL, EYEBROW, KBD, TEXTAREA } from "./ui";
@@ -12,12 +14,54 @@ import { ALERT_ERROR, BUTTON_PRIMARY_STEP, BUTTON_SMALL, EYEBROW, KBD, TEXTAREA 
 const PLACEHOLDER =
   'e.g. "Scandinavian living room, light oak floor, white walls, a grey linen sofa facing the window, warm afternoon light."';
 
+const QUALITY_LABELS: Record<RenderQuality, string> = {
+  low: "Low — quickest preview",
+  medium: "Medium — balanced",
+  high: "High — most detail",
+};
+
+const QUALITY_OPTIONS: readonly ParamOption<RenderQuality>[] = RENDER_QUALITIES.map((value) => ({
+  value,
+  label: QUALITY_LABELS[value],
+}));
+
+/**
+ * "Match" keeps the aspect of the 3D view, so the render frames exactly what was
+ * on screen. The explicit sizes are the ones the image model takes as-is; any
+ * other size would still be squeezed into the API's constraints server-side.
+ */
+const MATCH_VIEW = "match";
+const SIZE_OPTIONS = [
+  { value: MATCH_VIEW, label: "Match the 3D view" },
+  { value: "1024x1024", label: "Square — 1024 × 1024" },
+  { value: "1536x1024", label: "Landscape — 1536 × 1024" },
+  { value: "1024x1536", label: "Portrait — 1024 × 1536" },
+] as const;
+
+type SizeChoice = (typeof SIZE_OPTIONS)[number]["value"];
+
+function sizeToChoice(size: OutputSize | null): SizeChoice {
+  if (!size) return MATCH_VIEW;
+  const label = `${size.width}x${size.height}`;
+  return SIZE_OPTIONS.some((option) => option.value === label) ? (label as SizeChoice) : MATCH_VIEW;
+}
+
+function choiceToSize(choice: SizeChoice): OutputSize | null {
+  if (choice === MATCH_VIEW) return null;
+  const [width, height] = choice.split("x").map(Number);
+  return { width, height };
+}
+
 /** Left panel of step 4: describe the look, render, download. */
 function RenderStepPanelComponent() {
   const prompt = useFloorplanStore((s) => s.prompt);
   const setPrompt = useFloorplanStore((s) => s.setPrompt);
   const generateRender = useFloorplanStore((s) => s.generateRender);
   const reset = useFloorplanStore((s) => s.reset);
+  const renderQuality = useFloorplanStore((s) => s.renderQuality);
+  const setRenderQuality = useFloorplanStore((s) => s.setRenderQuality);
+  const renderSize = useFloorplanStore((s) => s.renderSize);
+  const setRenderSize = useFloorplanStore((s) => s.setRenderSize);
   const {
     renderStatus,
     renderTiming,
@@ -47,6 +91,11 @@ function RenderStepPanelComponent() {
   const onRender = useCallback(() => {
     void generateRender();
   }, [generateRender]);
+
+  const onSizeChange = useCallback(
+    (choice: SizeChoice) => setRenderSize(choiceToSize(choice)),
+    [setRenderSize],
+  );
 
   // Enter submits (like a chat box); Shift+Enter inserts a newline.
   const onKeyDown = useCallback(
@@ -83,6 +132,28 @@ function RenderStepPanelComponent() {
           className={TEXTAREA}
         />
       </label>
+
+      {/* Stacked rather than side by side: the panel column is a narrow sidebar. */}
+      <div className="flex max-w-80 flex-col gap-3">
+        <ParamSelect
+          label="Quality"
+          value={renderQuality}
+          options={QUALITY_OPTIONS}
+          disabled={isRendering}
+          onChange={setRenderQuality}
+        />
+        <ParamSelect
+          label="Size"
+          value={sizeToChoice(renderSize)}
+          options={SIZE_OPTIONS}
+          disabled={isRendering}
+          onChange={onSizeChange}
+        />
+      </div>
+      <p className="-mt-1 text-[11px] leading-relaxed text-fg-faint">
+        Higher quality and more pixels cost more and take longer. Matching the 3D view keeps the
+        framing you left it on; the server may cap the quality lower.
+      </p>
 
       <button
         type="button"
