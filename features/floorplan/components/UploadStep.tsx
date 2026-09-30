@@ -4,7 +4,9 @@ import { memo, useCallback, useState } from "react";
 import type { DragEvent, KeyboardEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useFloorplanStore } from "@/features/floorplan/store/floorplanStore";
+import type { SceneProvider } from "@/features/floorplan/types";
 import { AspectFit } from "./AspectFit";
+import { ParamSelect, type ParamOption } from "./ParamSelect";
 import { StepHeading } from "./StepHeading";
 import { ACCEPTED_IMAGE_TYPES, useFilePicker } from "./useFilePicker";
 import { ALERT_ERROR, BUTTON_SECONDARY, BUTTON_SMALL_DANGER, INSET } from "./ui";
@@ -13,6 +15,11 @@ const TIPS: ReadonlyArray<string> = [
   "Dark walls on a light background",
   "Doors and windows visible",
   "One floor per image",
+];
+
+const PROVIDER_OPTIONS: readonly ParamOption<SceneProvider>[] = [
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Claude" },
 ];
 
 /** Left panel of step 1: what to upload, replace / remove, continue. */
@@ -25,6 +32,8 @@ function UploadStepPanelComponent() {
     })),
   );
   const clearImage = useFloorplanStore((s) => s.clearImage);
+  const sceneProvider = useFloorplanStore((s) => s.sceneProvider);
+  const setSceneProvider = useFloorplanStore((s) => s.setSceneProvider);
   const { inputRef, open, onChange } = useFilePicker();
 
   return (
@@ -63,6 +72,16 @@ function UploadStepPanelComponent() {
       </div>
 
       {error && <p className={ALERT_ERROR}>{error}</p>}
+
+      <div className="flex max-w-80">
+        <ParamSelect
+          label="3D scene model"
+          hint="Who reads the plan and writes the 3D scene. The final render is made by OpenAI either way: Claude does not generate images."
+          value={sceneProvider}
+          options={PROVIDER_OPTIONS}
+          onChange={setSceneProvider}
+        />
+      </div>
     </>
   );
 }

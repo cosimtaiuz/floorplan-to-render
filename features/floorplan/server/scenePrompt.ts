@@ -7,7 +7,7 @@ import type { CameraMarker } from "@/features/floorplan/types";
 
 /**
  * Developer instructions for the model. Kept static (no per-request data) so the
- * prefix can be cached by OpenAI across requests. Per-request inputs go in the
+ * prefix can be cached by either provider across requests. Per-request inputs go in the
  * user message built by `buildUserMessage`.
  *
  * The goal of this step is a *geometrically faithful* model of the whole plan

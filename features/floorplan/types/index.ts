@@ -11,13 +11,30 @@ export type CameraMarker = {
 };
 
 /**
- * Reasoning effort of the scene model, cheapest first. The order is the scale:
- * the server clamps a request to the ceiling the deployment allows, so entries
- * must stay sorted from least to most expensive.
+ * Who writes the 3D scene. Only the scene step is affected: the render step
+ * always goes to OpenAI, because Claude does not generate images.
+ */
+export const SCENE_PROVIDERS = ["openai", "anthropic"] as const;
+export type SceneProvider = (typeof SCENE_PROVIDERS)[number];
+export const DEFAULT_SCENE_PROVIDER: SceneProvider = "openai";
+
+/**
+ * Reasoning effort of the OpenAI scene model, cheapest first. The order is the
+ * scale: the server clamps a request to the ceiling the deployment allows, so
+ * entries must stay sorted from least to most expensive.
  */
 export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
+
+/**
+ * Effort of the Claude scene model (`output_config.effort`), cheapest first,
+ * same scale contract as above. Kept apart from the OpenAI scale because the
+ * two APIs evolve independently, even where the values currently coincide.
+ */
+export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ClaudeEffort = (typeof CLAUDE_EFFORTS)[number];
+export const DEFAULT_CLAUDE_EFFORT: ClaudeEffort = "medium";
 
 /** Output quality of the image model, cheapest first (same scale contract as above). */
 export const RENDER_QUALITIES = ["low", "medium", "high"] as const;
@@ -37,8 +54,11 @@ export type OutputSize = {
 export type GenerateRequest = {
   imageDataUrl: string;
   camera?: CameraMarker;
-  /** Chosen in the UI. Absent (or above the server's ceiling) falls back on the server. */
-  reasoningEffort?: ReasoningEffort;
+  /**
+   * Chosen in the UI, on the scale of the provider whose route receives the
+   * request. Absent (or above the server's ceiling) falls back on the server.
+   */
+  reasoningEffort?: ReasoningEffort | ClaudeEffort;
 };
 
 /**

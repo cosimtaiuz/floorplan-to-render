@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import { readAndDownscaleImage } from "@/features/floorplan/lib/imageUtils";
 import {
+  DEFAULT_CLAUDE_EFFORT,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_RENDER_QUALITY,
+  DEFAULT_SCENE_PROVIDER,
   type CameraMarker,
+  type ClaudeEffort,
   type FlowStep,
   type GenerateRequest,
   type GenerateResponse,
@@ -14,6 +17,7 @@ import {
   type RenderResponse,
   type RoomSpot,
   type ScenePose,
+  type SceneProvider,
   type SceneScreenshot,
   type Timing,
 } from "@/features/floorplan/types";
@@ -35,11 +39,19 @@ export type FloorplanState = {
   camera: CameraMarker | null;
 
   /**
+   * Who writes the 3D scene: OpenAI or Claude, each behind its own route. The
+   * render step is OpenAI either way (Claude does not generate images).
+   */
+  sceneProvider: SceneProvider;
+
+  /**
    * How hard the model thinks about the scene. Chosen here rather than on the
    * server so `low` can frame the plan and `high` can finish it, without a restart.
    * The server caps it at what the deployment allows.
    */
   reasoningEffort: ReasoningEffort;
+  /** Same idea on Claude's scale, kept apart so switching provider keeps both choices. */
+  claudeEffort: ClaudeEffort;
 
   /** 3D scene step (the reasoning model writes Three.js code). */
   status: GenerationStatus;
@@ -50,7 +62,7 @@ export type FloorplanState = {
   startCamera: ScenePose | null;
   /** Rooms identified by the model, each with a standing point for the room switcher. */
   rooms: RoomSpot[];
-  /** Error coming from the API call (network, OpenAI, validation). */
+  /** Error coming from the API call (network, model provider, validation). */
   errorMessage: string | null;
   /** Error thrown by the generated code while running inside the preview iframe. */
   runtimeError: string | null;
@@ -85,7 +97,9 @@ export type FloorplanState = {
   setCamera: (camera: CameraMarker) => void;
   clearCamera: () => void;
   setPrompt: (prompt: string) => void;
+  setSceneProvider: (provider: SceneProvider) => void;
   setReasoningEffort: (effort: ReasoningEffort) => void;
+  setClaudeEffort: (effort: ClaudeEffort) => void;
   setRenderQuality: (quality: RenderQuality) => void;
   setRenderSize: (size: OutputSize | null) => void;
   setRuntimeError: (message: string | null) => void;
@@ -153,7 +167,9 @@ const initialState = {
  * plan too, so `reset` keeps them.
  */
 const initialSettings = {
+  sceneProvider: DEFAULT_SCENE_PROVIDER as SceneProvider,
   reasoningEffort: DEFAULT_REASONING_EFFORT,
+  claudeEffort: DEFAULT_CLAUDE_EFFORT,
   renderQuality: DEFAULT_RENDER_QUALITY,
   renderSize: null as OutputSize | null,
 };
@@ -234,7 +250,11 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
 
   setPrompt: (prompt) => set({ prompt }),
 
+  setSceneProvider: (sceneProvider) => set({ sceneProvider }),
+
   setReasoningEffort: (reasoningEffort) => set({ reasoningEffort }),
+
+  setClaudeEffort: (claudeEffort) => set({ claudeEffort }),
 
   setRenderQuality: (renderQuality) => set({ renderQuality }),
 
@@ -251,7 +271,7 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
   setLastView: (pose) => set({ lastView: pose }),
 
   generate: async () => {
-    const { status, imageDataUrl, camera, reasoningEffort } = get();
+    const { status, imageDataUrl, camera, sceneProvider, reasoningEffort, claudeEffort } = get();
     if (status === "loading") return;
     if (!imageDataUrl) {
       set({ status: "error", errorMessage: "Upload a floorplan first." });
@@ -269,19 +289,23 @@ export const useFloorplanStore = create<FloorplanState>()((set, get) => ({
       ...initialRenderState,
     });
 
+    const isClaude = sceneProvider === "anthropic";
     const body: GenerateRequest = {
       imageDataUrl,
       ...(camera ? { camera } : {}),
-      reasoningEffort,
+      reasoningEffort: isClaude ? claudeEffort : reasoningEffort,
     };
     const finish = () => ({ startedAt, durationMs: Date.now() - startedAt });
 
     try {
-      const response = await fetch("/api/floorplan/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const response = await fetch(
+        isClaude ? "/api/floorplan/generate-claude" : "/api/floorplan/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
 
       if (!response.ok) {
         set({ status: "error", errorMessage: await readError(response), sceneTiming: finish() });
