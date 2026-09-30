@@ -7,11 +7,12 @@ import {
   isFiniteNumber,
   isImageDataUrl,
   parseCamera,
+  parseClaudeEffort,
   parseOutputSize,
   parseReasoningEffort,
   parseRenderQuality,
 } from "./validation";
-import { REASONING_EFFORTS, RENDER_QUALITIES } from "@/features/floorplan/types";
+import { CLAUDE_EFFORTS, REASONING_EFFORTS, RENDER_QUALITIES } from "@/features/floorplan/types";
 
 describe("isFiniteNumber", () => {
   it("accepts ordinary numbers, including zero and negatives", () => {
@@ -109,6 +110,22 @@ describe("parseReasoningEffort", () => {
     expect(parseReasoningEffort(null)).toBeUndefined();
     expect(parseReasoningEffort(3)).toBeUndefined();
     expect(parseReasoningEffort({ effort: "max" })).toBeUndefined();
+  });
+});
+
+describe("parseClaudeEffort", () => {
+  it("keeps every value of the scale", () => {
+    for (const effort of CLAUDE_EFFORTS) {
+      expect(parseClaudeEffort(effort)).toBe(effort);
+    }
+  });
+
+  it("treats anything off the scale as not asked for", () => {
+    // Not an effort the Messages API accepts, so it must never reach the SDK.
+    expect(parseClaudeEffort("ultracode")).toBeUndefined();
+    expect(parseClaudeEffort("MAX")).toBeUndefined();
+    expect(parseClaudeEffort(undefined)).toBeUndefined();
+    expect(parseClaudeEffort(2)).toBeUndefined();
   });
 });
 

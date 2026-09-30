@@ -1,7 +1,9 @@
 import {
+  CLAUDE_EFFORTS,
   REASONING_EFFORTS,
   RENDER_QUALITIES,
   type CameraMarker,
+  type ClaudeEffort,
   type OutputSize,
   type ReasoningEffort,
   type RenderQuality,
@@ -42,6 +44,11 @@ function parseOnScale<T extends string>(value: unknown, scale: readonly T[]): T 
 /** Reasoning effort asked for by the client. Anything unknown is treated as "not asked". */
 export function parseReasoningEffort(value: unknown): ReasoningEffort | undefined {
   return parseOnScale(value, REASONING_EFFORTS);
+}
+
+/** Claude effort asked for by the client. Anything unknown is treated as "not asked". */
+export function parseClaudeEffort(value: unknown): ClaudeEffort | undefined {
+  return parseOnScale(value, CLAUDE_EFFORTS);
 }
 
 /** Render quality asked for by the client. Anything unknown is treated as "not asked". */

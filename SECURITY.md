@@ -19,23 +19,24 @@ specific third-party deployment should go to that deployment's operator.
 
 Things that are in scope for this repository:
 
-- A way for a request to reach the OpenAI API with someone else's key, or to
+- A way for a request to reach the OpenAI or Anthropic API with someone else's key, or to
   read a key from the server.
 - An escape from the sandboxed preview iframe into the parent page.
-- Input that reaches the OpenAI API without passing the validation in
+- Input that reaches the OpenAI or Anthropic API without passing the validation in
   `features/floorplan/lib/validation.ts`.
 
 ## Handling API keys
 
-`OPENAI_API_KEY` is read only inside API route handlers on the server and is
-never sent to the browser. Two properties keep it that way, and both are worth
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are read only inside API route
+handlers on the server and are never sent to the browser. Two properties keep it that way, and both are worth
 preserving in any change:
 
 - Every module under a `server/` folder starts with `import "server-only"`, so
   importing one from a client component fails the build rather than shipping it.
-- Upstream error text from OpenAI is logged on the server and never returned in
+- Upstream error text from OpenAI or Anthropic is logged on the server and never returned in
   a response body, because it can name the organization, quota state or billing
-  status behind the key. See `features/floorplan/server/openaiError.ts`.
+  status behind the key. See `features/floorplan/server/openaiError.ts` and
+  `anthropicError.ts` next to it.
 
 Keep secrets in `.env.local`, which is git-ignored. `.env.example` documents the
 variable names and must never contain real values.
@@ -47,7 +48,7 @@ deploys it owns the key and controls who can reach it. There is no rate
 limiting, per-IP throttle or captcha in this repository.
 
 If you expose a deployment to the public internet, every visitor can spend your
-OpenAI credit. Put authentication, a rate limiter or a private network in front
+OpenAI and Anthropic credit. Put authentication, a rate limiter or a private network in front
 of it first. See the "Costs and abuse" section of the README.
 
 ## Model-generated code

@@ -11,13 +11,15 @@ Nothing is stored: refreshing the page clears everything.
 
 ## How it works
 
-1. **Scene** — the floorplan and the camera marker go to the OpenAI Responses API
-   with Structured Outputs. The model returns the body of a `buildScene()`
+1. **Scene** — the floorplan and the camera marker go to the model picked on the
+   first step: the OpenAI Responses API or the Claude Messages API, both with
+   Structured Outputs. The model returns the body of a `buildScene()`
    function, a summary, the start camera and one standing point per room.
 2. **Walkthrough** — that code runs in a sandboxed `<iframe>` with its own
    first-person controller, so model-written code can never touch the app.
 3. **Render** — the 3D view is frozen as a screenshot and sent to the OpenAI
-   Image API together with the plain floorplan and your description.
+   Image API together with the plain floorplan and your description. This step
+   is OpenAI whichever scene model you picked: Claude does not generate images.
 
 ## Requirements
 
@@ -30,6 +32,9 @@ Nothing is stored: refreshing the page clears everything.
   GPT Image models may require
   [API Organization Verification](https://platform.openai.com/settings/organization/general)
   on your OpenAI account first.
+- Optionally, an **Anthropic API key** with access to the model named in
+  `app/api/floorplan/generate-claude/route.ts`, to write the 3D scene with
+  Claude instead.
 - A browser with **internet access** for the 3D step — see
   [Third-party runtime dependency](#third-party-runtime-dependency).
 
@@ -65,8 +70,9 @@ All values live in `.env.local`, which is git-ignored. See `.env.example`.
 
 | Variable                     | Required | Default    | Purpose                                                     |
 | ---------------------------- | -------- | ---------- | ----------------------------------------------------------- |
-| `OPENAI_API_KEY`             | yes      | —          | Both floorplan routes                                       |
-| `FLOORPLAN_REASONING_EFFORT` | no       | no ceiling | Highest effort a request may ask for (`low`…`max`)          |
+| `OPENAI_API_KEY`             | yes      | —          | Render route, and the OpenAI scene route                    |
+| `ANTHROPIC_API_KEY`          | no       | —          | Claude scene route (only when Claude is picked in the UI)   |
+| `FLOORPLAN_REASONING_EFFORT` | no       | no ceiling | Highest effort a request may ask for, either provider       |
 | `FLOORPLAN_RENDER_QUALITY`   | no       | no ceiling | Highest render quality a request may ask for (`low`…`high`) |
 
 The key is read at request time, not at build time, so `pnpm build` and the
@@ -200,7 +206,8 @@ lives in a feature folder organised by role.
 ```
 app/
   page.tsx                 the tool
-  api/floorplan/generate/  POST: floorplan + camera -> Three.js code
+  api/floorplan/generate/  POST: floorplan + camera -> Three.js code (OpenAI)
+  api/floorplan/generate-claude/  POST: same contract, written by Claude
   api/floorplan/render/    POST: screenshot + prompt -> render
 features/floorplan/
   components/              React UI
@@ -236,7 +243,13 @@ never returned in a response body — see
 and the camera to the Responses API with Structured Outputs and returns
 `{ code, summary, camera, rooms }`: `camera` is the marker converted into scene
 meters (where the visitor starts) and `rooms` is one `{ name, x, z, angleDeg }`
-standing point per room on the plan (what the room buttons use). The prompt
+standing point per room on the plan (what the room buttons use).
+`app/api/floorplan/generate-claude/route.ts` is the same contract on the Claude
+Messages API (streamed, adaptive thinking, `output_config.effort`); the request
+parsing, output schema and answer checks both routes share live in
+`features/floorplan/server/sceneGeneration.ts`, so only the SDK call differs.
+The provider is picked on step 1 and the effort on step 3; the store sends the
+request to the matching route. The prompt
 (`features/floorplan/server/scenePrompt.ts`) is about completeness and accuracy:
 measure the plan, list walls/openings/rooms/furniture as data, build the whole
 home from the data with a fixed flat palette and a catalogue of standard

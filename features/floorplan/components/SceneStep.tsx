@@ -3,7 +3,12 @@
 import { memo, useCallback, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useFloorplanStore } from "@/features/floorplan/store/floorplanStore";
-import { REASONING_EFFORTS, type ReasoningEffort } from "@/features/floorplan/types";
+import {
+  CLAUDE_EFFORTS,
+  REASONING_EFFORTS,
+  type ClaudeEffort,
+  type ReasoningEffort,
+} from "@/features/floorplan/types";
 import { ElapsedTimer } from "./ElapsedTimer";
 import { ParamSelect, type ParamOption } from "./ParamSelect";
 import { StepHeading } from "./StepHeading";
@@ -31,6 +36,22 @@ const EFFORT_OPTIONS: readonly ParamOption<ReasoningEffort>[] = REASONING_EFFORT
   label: EFFORT_LABELS[value],
 }));
 
+const CLAUDE_EFFORT_LABELS: Record<ClaudeEffort, string> = {
+  low: "Low — quickest draft",
+  medium: "Medium — balanced",
+  high: "High — more careful",
+  xhigh: "Extra high — slower",
+  max: "Max — slowest, most thorough",
+};
+
+const CLAUDE_EFFORT_OPTIONS: readonly ParamOption<ClaudeEffort>[] = CLAUDE_EFFORTS.map((value) => ({
+  value,
+  label: CLAUDE_EFFORT_LABELS[value],
+}));
+
+const EFFORT_HINT =
+  "Higher effort reads the plan more carefully, but the call is slower and costs more. The server may cap it lower.";
+
 /** Left panel of step 3: trigger the Three.js generation and read the outcome. */
 function SceneStepPanelComponent() {
   const { status, hasCode, summary, errorMessage, runtimeError, sceneTiming, hasCamera } =
@@ -46,8 +67,11 @@ function SceneStepPanelComponent() {
       })),
     );
   const generate = useFloorplanStore((s) => s.generate);
+  const sceneProvider = useFloorplanStore((s) => s.sceneProvider);
   const reasoningEffort = useFloorplanStore((s) => s.reasoningEffort);
   const setReasoningEffort = useFloorplanStore((s) => s.setReasoningEffort);
+  const claudeEffort = useFloorplanStore((s) => s.claudeEffort);
+  const setClaudeEffort = useFloorplanStore((s) => s.setClaudeEffort);
   const [showCode, setShowCode] = useState(false);
 
   const onGenerate = useCallback(() => {
@@ -60,9 +84,9 @@ function SceneStepPanelComponent() {
   return (
     <>
       <StepHeading title="Generate the 3D scene">
-        The model reads the plan and writes a Three.js scene of the whole home: walls, ceilings,
-        doors, windows and standard furniture in flat colors. Accuracy matters here; materials and
-        style come in the next step.
+        {sceneProvider === "anthropic" ? "Claude" : "The OpenAI model"} reads the plan and writes a
+        Three.js scene of the whole home: walls, ceilings, doors, windows and standard furniture in
+        flat colors. Accuracy matters here; materials and style come in the next step.
         {hasCamera
           ? " The view starts from your camera, at eye height."
           : " Without a camera the view starts at eye height in the largest room."}{" "}
@@ -70,14 +94,25 @@ function SceneStepPanelComponent() {
       </StepHeading>
 
       <div className="flex max-w-80">
-        <ParamSelect
-          label="Reasoning effort"
-          hint="Higher effort reads the plan more carefully, but the call is slower and costs more. The server may cap it lower."
-          value={reasoningEffort}
-          options={EFFORT_OPTIONS}
-          disabled={isLoading}
-          onChange={setReasoningEffort}
-        />
+        {sceneProvider === "anthropic" ? (
+          <ParamSelect
+            label="Claude effort"
+            hint={EFFORT_HINT}
+            value={claudeEffort}
+            options={CLAUDE_EFFORT_OPTIONS}
+            disabled={isLoading}
+            onChange={setClaudeEffort}
+          />
+        ) : (
+          <ParamSelect
+            label="Reasoning effort"
+            hint={EFFORT_HINT}
+            value={reasoningEffort}
+            options={EFFORT_OPTIONS}
+            disabled={isLoading}
+            onChange={setReasoningEffort}
+          />
+        )}
       </div>
 
       <button
