@@ -19,7 +19,7 @@ import { capOnScale, parseClaudeEffort } from "@/features/floorplan/lib/validati
 // Same budget as the OpenAI route: high efforts on a large plan take minutes.
 export const maxDuration = 300;
 
-const MODEL = "claude-fable-5.1";
+const MODEL = "claude-fable-5-1";
 
 /**
  * Room for adaptive thinking plus a 250-450 line scene. The call is streamed,
