@@ -44,10 +44,12 @@ function StepButtonComponent({ step, label, status, onPick }: StepButtonProps) {
   return (
     <li className="relative flex flex-1 flex-col items-center">
       {step > 1 && (
-        // Line from the previous dot to this one; dots sit on top of it (z-10).
+        // Line from the previous dot to this one. It stops short of both dots
+        // (radius 0.875rem + a 0.25rem gap matching the current ring) because
+        // the done dots have a translucent fill the line would show through.
         <span
           aria-hidden="true"
-          className={`absolute top-3.5 right-1/2 -left-1/2 h-px ${isLocked ? "bg-line-strong" : "bg-accent/40"}`}
+          className={`absolute top-3.5 right-[calc(50%+1.125rem)] left-[calc(-50%+1.125rem)] h-px ${isLocked ? "bg-line-strong" : "bg-accent/40"}`}
         />
       )}
       <button
